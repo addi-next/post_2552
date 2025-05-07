@@ -4,7 +4,8 @@ import { encodedRedirect } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-
+import { join } from "path";
+import { writeFile } from "fs/promises";
 export const signUpAction = async (formData: FormData) => {
   const email = formData.get("email")?.toString();
   const password = formData.get("password")?.toString();
@@ -15,7 +16,7 @@ export const signUpAction = async (formData: FormData) => {
     return encodedRedirect(
       "error",
       "/sign-up",
-      "Email and password are required",
+      "Email and password are required"
     );
   }
 
@@ -34,7 +35,7 @@ export const signUpAction = async (formData: FormData) => {
     return encodedRedirect(
       "success",
       "/sign-up",
-      "Thanks for signing up! Please check your email for a verification link.",
+      "Thanks for signing up! Please check your email for a verification link."
     );
   }
 };
@@ -53,7 +54,7 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", "/sign-in", error.message);
   }
 
-  return redirect("/protected");
+  return redirect("/");
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {
@@ -75,7 +76,7 @@ export const forgotPasswordAction = async (formData: FormData) => {
     return encodedRedirect(
       "error",
       "/forgot-password",
-      "Could not reset password",
+      "Could not reset password"
     );
   }
 
@@ -86,7 +87,7 @@ export const forgotPasswordAction = async (formData: FormData) => {
   return encodedRedirect(
     "success",
     "/forgot-password",
-    "Check your email for a link to reset your password.",
+    "Check your email for a link to reset your password."
   );
 };
 
@@ -100,7 +101,7 @@ export const resetPasswordAction = async (formData: FormData) => {
     encodedRedirect(
       "error",
       "/protected/reset-password",
-      "Password and confirm password are required",
+      "Password and confirm password are required"
     );
   }
 
@@ -108,7 +109,7 @@ export const resetPasswordAction = async (formData: FormData) => {
     encodedRedirect(
       "error",
       "/protected/reset-password",
-      "Passwords do not match",
+      "Passwords do not match"
     );
   }
 
@@ -120,15 +121,88 @@ export const resetPasswordAction = async (formData: FormData) => {
     encodedRedirect(
       "error",
       "/protected/reset-password",
-      "Password update failed",
+      "Password update failed"
     );
   }
 
   encodedRedirect("success", "/protected/reset-password", "Password updated");
 };
+export async function signInWithGoogle() {
+  const supabase = await createClient();
+  const redirectTo = new URL(
+    "/auth/callback",
+    "http://localhost:3000"
+  ).toString(); // 开发环境
+  // const redirectTo = new URL('/auth/callback', 'https://your-domain.com').toString(); // 生产环境
 
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent",
+      },
+    },
+  });
+
+  if (error) {
+    console.error("Google 登录错误:", error);
+    return redirect("/signin?error=Google 登录失败");
+  }
+
+  if (data.url) {
+    console.log("Redirecting to Google:", data.url);
+    redirect(data.url);
+  }
+}
 export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return redirect("/sign-in");
+  return redirect("/");
+};
+
+export const addPostAction = async (formData: FormData) => {
+  const title = formData.get("title")?.toString();
+  const content = formData.get("content")?.toString();
+  const file = formData.get("image") as File;
+  const supabase = await createClient();
+  let imageurl = "";
+  if (file.size > 0) {
+    const objectkey = `posts/${file.name}`;
+
+    const { data, error: uploadError } = await supabase.storage
+      .from("post-image")
+      .upload(objectkey, file);
+    if (uploadError) {
+      console.error(uploadError.message);
+      return encodedRedirect("error", "/", "Could not upload image");
+    }
+    const { data: publicUrlData } = supabase.storage
+      .from("post-image")
+      .getPublicUrl(data.path);
+    imageurl = publicUrlData.publicUrl;
+  }
+  const { error } = await supabase.from("post").insert({
+    title,
+    content,
+    image: imageurl,
+  });
+
+  if (error) {
+    console.error(error.message);
+    return { suscess: false, error: error.message };
+  }
+  return { success: true };
+};
+
+export const deletePostAction = async (postId: string) => {
+  const supabase = await createClient();
+  const { error } = await supabase.from("post").delete().eq("id", postId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
 };

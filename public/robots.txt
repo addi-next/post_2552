@@ -1,0 +1,10 @@
+# 允许所有搜索引擎爬取全站
+User-agent: *
+Allow: /
+
+# 禁止爬取auth页面
+Disallow: /auth/
+
+# 网站地图位置
+# 部署后替换为您的实际域名
+Sitemap: https://your-actual-domain.com/sitemap.xml 
